@@ -4,7 +4,7 @@ from decimal import Decimal
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
 
-from mortgage_tools import Loan, LoanAmortizer
+from mortgagemodeler import Loan, LoanAmortizer
 from utils import (
     effective_apr,
     plot_amortization_curve,

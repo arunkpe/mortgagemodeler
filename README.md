@@ -1,9 +1,10 @@
 # Mortgage Tools
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/mortgage-tools/actions)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/arunkpe/mortgagemodeler/actions)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/arunkpe/mortgagemodeler/HEAD)
 
 A professional-grade Python toolkit and CLI for simulating, analyzing, and comparing mortgage loans. Supports fixed-rate, ARM, FHA, VA, USDA, and HELOC loans with rich features like **recasting**, **refinancing**, **extra payment plans**, and **effective APR and breakeven analysis**.
 
@@ -27,8 +28,8 @@ A professional-grade Python toolkit and CLI for simulating, analyzing, and compa
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/mortgage-tools.git
-cd mortgage-tools
+git clone https://github.com/yourusername/mortgagemodeler.git
+cd mortgagemodeler
 pip install -r requirements.txt
 ```
 
