@@ -1,4 +1,4 @@
-# Mortgage Tools
+# Mortgage Modeler
 
 A modular, CLI-driven Python library for modeling amortization schedules, refinancing, recasting, and loan comparison — including support for fixed, ARM, FHA, VA, USDA, and HELOC loans.
 
@@ -19,8 +19,8 @@ A modular, CLI-driven Python library for modeling amortization schedules, refina
 ## Installation
 
 ```bash
-git clone https://github.com/arunkpe/mortgage-tools.git
-cd mortgage-tools
+git clone https://github.com/arunkpe/mortgagemodeler.git
+cd mortgagemodeler
 pip install -r requirements.txt
 ```
 

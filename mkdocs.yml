@@ -1,7 +1,7 @@
-site_name: Mortgage Tools
-site_url: https://arunkpe.github.io/mortgage-tools
-repo_url: https://github.com/arunkpe/mortgage-tools
-repo_name: mortgage-tools
+site_name: MortgageModeler
+site_url: https://arunkpe.github.io/mortgagemodeler
+repo_url: https://github.com/arunkpe/mortgagemodeler
+repo_name: mortgagemodeler
 
 theme:
   name: material

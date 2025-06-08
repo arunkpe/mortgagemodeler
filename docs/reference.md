@@ -2,7 +2,7 @@
 
 ## Loan
 
-::: mortgage_tools.loan.Loan
+::: mortgagemodeler.loan.Loan
     options:
       show_source: true
       show_signature: true
@@ -10,7 +10,7 @@
 
 ## LoanAmortizer
 
-::: mortgage_tools.amortizer.LoanAmortizer
+::: mortgagemodeler.amortizer.LoanAmortizer
     options:
       show_source: true
       show_signature: true
