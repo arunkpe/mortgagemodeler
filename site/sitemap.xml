@@ -1,59 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/amortization/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/amortization/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/architecture/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/architecture/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/cli/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/cli/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/examples/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/examples/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/forward_rates/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/forward_rates/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/license/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/license/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/loan_types/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/loan_types/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/reference/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/reference/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/scenarios/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/scenarios/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/usage/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/usage/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/examples/fha_30/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/examples/fha_30/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/examples/heloc_draw/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/examples/heloc_draw/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
     <url>
-         <loc>https://arunkpe.github.io/mortgage-tools/examples/va_30/</loc>
+         <loc>https://arunkpe.github.io/mortgagemodeler/examples/va_30/</loc>
          <lastmod>2025-06-08</lastmod>
     </url>
 </urlset>
