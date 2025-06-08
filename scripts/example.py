@@ -2,8 +2,8 @@
 
 import os
 from datetime import date
-from mortgage_tools import Loan
-from mortgage_tools import LoanAmortizer
+from mortgagemodeler import Loan
+from mortgagemodeler import LoanAmortizer
 
 EXAMPLES = [
     ("fixed_30yr_6.5.csv", Loan(250000, 360, 6.5, date(2024, 1, 1))),

@@ -1,0 +1,7 @@
+# Python packaging
+*.egg-info/
+dist/
+build/
+__pycache__/
+*.py[cod]
+READMEPyPi.md
