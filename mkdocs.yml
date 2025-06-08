@@ -1,0 +1,49 @@
+site_name: Mortgage Tools
+site_url: https://arunkpe.github.io/mortgage-tools
+repo_url: https://github.com/arunkpe/mortgage-tools
+repo_name: mortgage-tools
+
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: blue
+    accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Loan Types: loan_types.md
+  - Amortization: amortization.md
+  - Recast & Refinance: scenarios.md
+  - CLI Usage: cli.md
+  - Recipes: examples.md
+  - CLI Examples: usage.md
+  - Architecture: architecture.md
+  - Forward Rates: forward_rates.md
+  - Loan Examples:
+      - FHA Loan: examples/fha_30.md
+      - VA Loan: examples/va_30.md
+      - HELOC Draw: examples/heloc_draw.md
+  - API Reference: reference.md
+  - License: license.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - admonition
+  - codehilite
+  - pymdownx.details
+  - pymdownx.superfences
