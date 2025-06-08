@@ -1,0 +1,23 @@
+[project]
+name = "mortgage-tools"
+version = "0.1.0"
+description = "Flexible mortgage amortization tools in Python"
+authors = [
+    { name = "Arun Kumar"}
+]
+dependencies = [
+    "click>=8.0",
+    "pandas>=2.0",
+    "fredapi>=0.5",
+    "matplotlib",
+    "seaborn",
+    "numpy_financial",
+    "python-dotenv"
+]
+
+[project.scripts]
+mortgage = "cli.cli:cli"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
