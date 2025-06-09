@@ -10,7 +10,7 @@ This section documents the internal structure and modular design of the **Mortga
 MortgageAmortization/
 ├── cli/                    # CLI entry point (Click-based)
 │   └── cli.py
-├── mortgage_tools/        # Core modeling logic
+├── mortgagemodeler/       # Core modeling logic
 │   ├── loan.py            # Loan class with support for fixed, FHA, VA, ARM, etc.
 │   ├── amortizer.py       # Generates amortization schedules
 │   └── __init__.py

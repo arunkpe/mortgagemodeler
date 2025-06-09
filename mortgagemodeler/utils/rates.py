@@ -33,15 +33,28 @@ class RateReader:
         self.filepath = filepath or os.path.join(os.path.dirname(__file__), "../data", "macroeconforward.txt")
         self.rates_df = self._load_rates()
 
-    def _load_rates(self) -> pd.DataFrame:
+    def _load_rates(self) -> Optional[pd.DataFrame]:
+        """
+        Attempts to load macroeconomic rate projections. If file not found, returns None.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            DataFrame of rates if file exists, else None.
+        """
+        if not os.path.exists(self.filepath):
+            print(f"⚠️  RateReader: File not found at {self.filepath}. Falling back to static index + margin logic.")
+            return None
+
         if self.filepath.endswith(".csv"):
             return pd.read_csv(self.filepath, sep=None, engine='python')
         else:
             return pd.read_csv(self.filepath, sep='\t')
 
+
     def get_rate(self, index: str, date_str: str) -> float:
         """
-        Retrieve the forward rate for a specific index and date.
+        Retrieve forward rate for a given index and date. If no file loaded, return 0.0.
 
         Parameters
         ----------
@@ -53,14 +66,17 @@ class RateReader:
         Returns
         -------
         float
-            Forward interest rate.
+            Forward interest rate or fallback 0.0.
         """
+        if self.rates_df is None:
+            return 0.0
+
         index_col = self.SUPPORTED_INDICES.get(index.upper())
         if index_col is None:
             raise ValueError(f"Unsupported index: {index}. Supported: {list(self.SUPPORTED_INDICES.keys())}")
 
         row = self.rates_df[self.rates_df.iloc[:, 0] == date_str]
         if row.empty:
-            raise KeyError(f"Date {date_str} not found in rate file.")
+            return 0.0
 
         return float(row[index_col].values[0])
