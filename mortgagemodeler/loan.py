@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 
 class Loan:
@@ -34,22 +34,33 @@ class Loan:
     def __init__(self, principal, term_months, rate, origination_date: date,
                  loan_type='fixed', compounding='30E/360', pmi=False,
                  draw_period_months: Optional[int] = None, repayment_term_months: Optional[int] = None,
+                 arm_structure: Optional[Tuple[int, int]] = None,
                  extra_payment_amount: Optional[Union[float, Decimal]] = None,
                  extra_payment_frequency: Optional[str] = None):
-        self.principal = Decimal(principal)
-        self.original_balance = Decimal(principal)
+        self.principal = Decimal(str(principal))
+        self.original_balance = Decimal(str(principal))
         self.term = term_months
-        self.rate = Decimal(rate)
+        self.rate = Decimal(str(rate))
         self.origination_date = origination_date
         self.loan_type = loan_type
         self.compounding = compounding
         self.is_pmi = pmi
-
+        self.is_fixed = loan_type == 'fixed'
+        
         # ARM attributes
+        self.is_arm = loan_type == 'arm'
         self.index = None
         self.margin = Decimal("0.00")
-        self.arm_structure = None
-        self.caps = {'initial': None, 'periodic': None, 'lifetime': None}
+        self.arm_structure = arm_structure if self.loan_type == 'arm' else None
+        self.forward_curve = None  # Optional forward rate schedule (date -> rate)
+        self.rate_bounds = {
+            'initial_cap': Decimal("2.0"),
+            'periodic_cap': Decimal("1.0"),
+            'lifetime_cap': Decimal("5.0"),
+            'initial_floor': Decimal("0.0"),
+            'periodic_floor': Decimal("0.0"),
+            'lifetime_floor': Decimal("0.0"),
+        }
 
         # HELOC support
         self.draw_period_months = draw_period_months or 0
@@ -74,8 +85,76 @@ class Loan:
             self.is_pmi = False
 
         # Extra payment
-        self.extra_payment_amount = Decimal(extra_payment_amount) if extra_payment_amount else Decimal("0.00")
+        self.extra_payment_amount = Decimal(str(extra_payment_amount)) if extra_payment_amount else Decimal("0.00")
         self.extra_payment_frequency = extra_payment_frequency
+
+    @classmethod
+    def fixed(cls, principal, term, rate, origination_date, **kwargs):
+        """Construct a fixed-rate loan."""
+        return cls(
+            principal=principal,
+            term_months=term,
+            rate=rate,
+            origination_date=origination_date,
+            loan_type='fixed',
+            **kwargs
+        )
+
+
+    @classmethod
+    def from_arm(cls, principal, term, arm_type, index, margin, origination_date,
+                 rate=None, caps=(2, 1, 5), floors=(0, 0, 0), forward_curve=None):
+        """
+        Construct an ARM loan with index, margin, caps/floors, and optional forward curve.
+
+        Parameters
+        ----------
+        arm_type : str
+            Format like '5/6' where 5 = fixed period (years), 6 = reset frequency (months).
+        index : str
+            Name of reference index (e.g., 'SOFR').
+        margin : float
+            Spread above index.
+        origination_date : date
+            Loan start date.
+        rate : float, optional
+            Initial rate; if not given, inferred from index + margin.
+        caps : tuple
+            (initial cap, periodic cap, lifetime cap)
+        floors : tuple
+            (initial floor, periodic floor, lifetime floor)
+        forward_curve : dict, optional
+            Optional dict of {date: rate} to override index source.
+        """
+        fixed, freq = map(int, arm_type.split('/'))
+
+        if rate is None:
+            orig_str = origination_date.strftime('%Y-%m-%d')
+            base_rate = Decimal(str(forward_curve.get(orig_str, 0.0))) if forward_curve else Decimal("0.0")
+            start_rate = base_rate + Decimal(str(margin))
+        else:
+            start_rate = Decimal(str(rate))
+
+        loan = cls(
+            principal=principal,
+            term_months=term,
+            rate=start_rate,
+            origination_date=origination_date,
+            loan_type='arm',
+            arm_structure=(fixed, freq)
+        )
+        loan.index = index.upper()
+        loan.margin = Decimal(str(margin))
+        loan.forward_curve = forward_curve or {}
+        loan.rate_bounds = {
+            'initial_cap': Decimal(str(caps[0])),
+            'periodic_cap': Decimal(str(caps[1])),
+            'lifetime_cap': Decimal(str(caps[2])),
+            'initial_floor': Decimal(str(floors[0])),
+            'periodic_floor': Decimal(str(floors[1])),
+            'lifetime_floor': Decimal(str(floors[2])),
+        }
+        return loan
 
     @classmethod
     def from_fha(cls, principal, term, rate, origination_date):
@@ -92,20 +171,6 @@ class Loan:
         """Construct a USDA loan object."""
         return cls(principal, term, rate, origination_date, loan_type='usda')
 
-    @classmethod
-    def from_arm_type(cls, arm_type: str, principal, term, rate, origination_date):
-        """Construct an ARM loan from a hybrid ARM string (e.g., '5/6').
-
-        Parameters
-        ----------
-        arm_type : str
-            Format is '{fixed_period}/{adjustment_freq}' in years/months.
-        """
-        fixed, freq = map(int, arm_type.split('/'))
-        loan = cls(principal, term, rate, origination_date, loan_type='arm')
-        loan.arm_structure = (fixed, freq)
-        return loan
-
     def set_indexed_rate(self, index_name: str, margin: float, caps=(2, 1, 5)):
         """Configure index-based rate adjustment (for ARMs or HELOCs).
 
@@ -119,30 +184,13 @@ class Loan:
             Tuple of (initial cap, periodic cap, lifetime cap).
         """
         self.index = index_name.upper()
-        self.margin = Decimal(margin)
+        self.margin = Decimal(str(margin))
         self.caps = {'initial': caps[0], 'periodic': caps[1], 'lifetime': caps[2]}
 
     def refinance(self, new_rate: float, refinance_date: date, new_term: Optional[int] = None, fees: float = 0.0):
-        """Creates a new Loan object simulating a refinance at a given date.
-
-        Parameters
-        ----------
-        new_rate : float
-            New interest rate.
-        refinance_date : date
-            Date of refinance (must match amortizer schedule).
-        new_term : int, optional
-            Optional new loan term in months.
-        fees : float, optional
-            Optional closing costs added to balance.
-
-        Returns
-        -------
-        Loan
-            New refinanced Loan object.
-        """
+        """Creates a new Loan object simulating a refinance at a given date."""
         return Loan(
-            principal=self.principal + Decimal(fees),
+            principal=self.principal + Decimal(str(fees)),
             term_months=new_term or self.term,
             rate=new_rate,
             origination_date=refinance_date,
@@ -152,33 +200,18 @@ class Loan:
             draw_period_months=self.draw_period_months,
             repayment_term_months=self.repayment_term_months,
             extra_payment_amount=float(self.extra_payment_amount),
-            extra_payment_frequency=self.extra_payment_frequency
+            extra_payment_frequency=self.extra_payment_frequency,
+            arm_structure=self.arm_structure if self.loan_type == 'arm' else None,
         )
 
     def recast(self, lump_sum: float, recast_date: date):
-        """Apply a lump-sum principal reduction and update loan balance.
-
-        Parameters
-        ----------
-        lump_sum : float
-            Amount to reduce from principal.
-        recast_date : date
-            Date the recast is executed.
-        """
-        self.principal -= Decimal(lump_sum)
+        """Apply a lump-sum principal reduction and update loan balance."""
+        self.principal -= Decimal(str(lump_sum))
         self.origination_date = recast_date
         self.original_balance = self.principal
 
     def apply_extra_payment(self, amount: float, frequency: str):
-        """Set up recurring extra payments.
-
-        Parameters
-        ----------
-        amount : float
-            Extra payment amount to apply.
-        frequency : str
-            Payment frequency, e.g., 'monthly', 'biweekly'.
-        """
+        """Set up recurring extra payments."""
         self.extra_payment_amount = Decimal(str(amount))
         self.extra_payment_frequency = frequency
 
@@ -189,5 +222,15 @@ class Loan:
             "term_months": self.term,
             "rate": float(self.rate),
             "start_date": self.origination_date.isoformat(),
-            "type": self.loan_type.upper()
+            "type": self.loan_type.upper(),
+            "is_fixed": self.is_fixed,
+            "is_arm": self.is_arm,
+            "is_fha": self.is_fha,
+            "is_va": self.is_va,
+            "is_usda": self.is_usda,
+            "is_heloc": self.is_heloc,
+            "has_pmi": self.is_pmi,
+            "extra_payment_amount": float(self.extra_payment_amount),
+            "extra_payment_frequency": self.extra_payment_frequency
         }
+
