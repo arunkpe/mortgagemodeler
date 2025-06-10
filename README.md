@@ -13,7 +13,7 @@ All features — from extra payments and ARM resets to refinance and recast — 
 
 ## Why MortgageModeler?
 
-Most open-source tools in the mortgage and personal finance space are either overly simplistic or narrowly focused on generic amortization tables. **MortgageModeler** goes far beyond as tou can see in the features set and possible analytics.
+Most open-source tools in the mortgage and personal finance space are either overly simplistic or narrowly focused on generic amortization tables. **MortgageModeler** features a rich set of core utilities and CLI based analytics.
 
 ---
 
