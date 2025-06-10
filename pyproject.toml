@@ -1,6 +1,6 @@
 [project]
 name = "mortgagemodeler"
-version = "0.4.0" 
+version = "0.4.1" 
 description = "Flexible mortgage amortization and analytics tools in Python"
 authors = [
     { name = "Arun Kumar" }

@@ -68,7 +68,7 @@ class LoanAmortizer:
             self.rate_source = RateSource.INDEX
         else:
             self.rate_source = RateSource.STATIC
-        print(f"[DEBUG INIT] Rate source selected: {self.rate_source}", flush=True)
+        #print(f"[DEBUG INIT] Rate source selected: {self.rate_source}", flush=True)
 
         if not loan.is_heloc:
             monthly_rate = self.initial_rate / Decimal("12") / Decimal("100")
@@ -194,7 +194,7 @@ class LoanAmortizer:
                 capped = min(max(capped, self.initial_rate - min_life), self.initial_rate + max_life)
 
                 self.last_rate = capped
-                print(f"[DEBUG] Month {month} Reset → Index: {base_rate}, Margin: {self.loan.margin}, Proposed: {proposed}, Capped: {capped}")
+                #print(f"[DEBUG] Month {month} Reset → Index: {base_rate}, Margin: {self.loan.margin}, Proposed: {proposed}, Capped: {capped}")
                 return capped, True
 
             return self.last_rate, False
