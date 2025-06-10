@@ -1,6 +1,6 @@
 [project]
 name = "mortgagemodeler"
-version = "0.3.1" 
+version = "0.4.0" 
 description = "Flexible mortgage amortization and analytics tools in Python"
 authors = [
     { name = "Arun Kumar" }
@@ -19,6 +19,13 @@ readme = "READMEPyPi.md"
 [project.license]
 text = "MIT"
 
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License"
+]
+
 [project.scripts]
 mortgagemodeler = "cli.cli:cli"
 
@@ -29,3 +36,4 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["mortgagemodeler", "mortgagemodeler.utils", "cli"]
 include-package-data = false
+

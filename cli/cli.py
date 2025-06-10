@@ -11,10 +11,23 @@ from mortgagemodeler.utils import (
     effective_apr,
     plot_amortization_curve,
     compare_scenarios,
-    breakeven_analysis
+    breakeven_analysis,
+    parse_curtailments
 )
 
 load_dotenv()
+
+PRODUCT_MAP = {
+    "3/6": (3, 6),
+    "3/1": (3, 12),
+    "5/1": (5, 12),
+    "5/6": (5, 6),
+    "5/5": (5, 60),
+    "7/6": (7, 6),
+    "7/1": (7, 12),
+    "10/6": (10, 6),
+    "10/1": (10, 12)
+}
 
 @click.group(help="""
 Mortgage Tools CLI
@@ -36,15 +49,17 @@ def cli():
 @click.option('--type', 'loan_type', type=click.Choice(['fixed', 'arm', 'heloc', 'fha', 'va', 'usda']), default='fixed', help="Loan type.")
 @click.option('--index', default=None, help="Index name (e.g. SOFR) for ARM or HELOC.")
 @click.option('--margin', type=float, default=0.0, help="Margin for ARM/HELOC.")
-@click.option('--arm-structure', type=(int, int), default=None, help="ARM structure as (fixed_years, reset_frequency_months). Example: 5 6 for a 5/6 ARM.")
+@click.option('--arm-structure',type=str,default=None,help="ARM structure as 'X/Y' where X is fixed period in years and Y is reset frequency in months. Example: '5/6' for a 5/6 ARM.")
 @click.option('--caps', nargs=3, type=float, default=(2.0, 1.0, 5.0), help="ARM caps: initial, periodic, lifetime.")
 @click.option('--floors', nargs=3, type=float, default=(0.0, 0.0, 0.0), help="ARM floors: initial, periodic, lifetime.")
 @click.option('--draw-period', type=int, default=120, help="Draw period for HELOC.")
 @click.option('--repayment-term', type=int, default=240, help="Repayment term for HELOC.")
 @click.option('--start-date', default=None, help="Origination date in YYYY-MM-DD format. Defaults to today.")
 @click.option('--extra-payment', type=float, default=0.0, help="Extra recurring monthly payment.")
+@click.option('--curtailments', type=str, default=None,help="Comma-separated extra payments like '100000@73,50000@85'.")
 @click.option('--extra-frequency', type=click.Choice(['monthly', 'biweekly']), default='monthly', help="Frequency of extra payments.")
 @click.option('--recast-date', default=None, help="Date to recast loan (YYYY-MM-DD).")
+@click.option('--recast-month', type=int, default=None, help="Month to recast loan (relative to start, e.g. 43). Overrides --recast-date.")
 @click.option('--lump-sum', type=float, default=0.0, help="Lump sum applied at recast.")
 @click.option('--refinance-date', default=None, help="Date of refinance (YYYY-MM-DD).")
 @click.option('--new-rate', type=float, default=None, help="New interest rate for refinance.")
@@ -59,8 +74,14 @@ def cli():
 @click.option('--start-month', type=int, default=1, help="Start amortization from this month (default: 1).")
 @click.option('--starting-balance', type=float, default=None, help="Loan balance at start-month (default: original balance).")
 @click.option('--starting-date', default=None, help="Start date override in YYYY-MM-DD (default: origination date).")
-@click.option('--rate-file', type=click.Path(exists=True), default=None, help="Optional CSV or JSON with custom date:rate schedule.")
+@click.option('--index-curve', type=str, default=None, help="Inline JSON of date:rate pairs (e.g. '{\"2030-07-01\": 6.25, \"2031-07-01\": 6.75}').")
+@click.option('--index-curve-file', type=click.Path(exists=True), default=None, help="Optional CSV or JSON with custom date:rate schedule.")
 @click.option('--balloon-month', type=int, default=None, help="Month at which a balloon payment is due. Schedule stops and balance is due.")
+@click.option('--months', type=int, default=None, help="Limit output to first N months")
+
+
+
+
 def amortize(**kwargs):
     start = datetime.strptime(kwargs['start_date'], '%Y-%m-%d').date() if kwargs['start_date'] else datetime.today().date()
     principal = Decimal(str(kwargs['balance']))
@@ -68,30 +89,109 @@ def amortize(**kwargs):
     if kwargs.get('points', 0.0) > 0.0 and kwargs.get('finance_points', False):
         principal += principal * Decimal(str(kwargs['points'])) / Decimal("100")
 
-    loan = Loan(
-        principal=principal,
-        term_months=kwargs['term'],
-        rate=Decimal(str(kwargs['rate'])),
-        origination_date=start,
-        loan_type=kwargs['loan_type'].lower(),
-        compounding='30E/360',
-        draw_period_months=kwargs['draw_period'] if kwargs['loan_type'] == 'heloc' else None,
-        repayment_term_months=kwargs['repayment_term'] if kwargs['loan_type'] == 'heloc' else None,
-        extra_payment_amount=kwargs['extra_payment'],
-        extra_payment_frequency=kwargs['extra_frequency'],
-        arm_structure=kwargs['arm_structure'] if kwargs['loan_type'] == 'arm' else None
-    )
 
-    if kwargs['loan_type'] in ['arm', 'heloc'] and kwargs['index']:
-        loan.set_indexed_rate(kwargs['index'], kwargs['margin'], kwargs['caps'])
+    arm_key = kwargs.get('arm_structure')
+    if arm_key and arm_key not in PRODUCT_MAP:
+            raise click.BadParameter(f"Unknown ARM structure '{arm_key}'. Allowed values: {', '.join(PRODUCT_MAP.keys())}")
+
+    caps = kwargs['caps']
+    floors = kwargs['floors']
+    index_curve = {}
+
+    # Load curve from file or inline JSON (you already do this below, but we need it now)
+    if kwargs['index_curve_file']:
+        if kwargs['index_curve_file'].endswith('.csv'):
+            df = pd.read_csv(kwargs['index_curve_file'])
+            if 'date' not in df.columns or 'rate' not in df.columns:
+                raise click.ClickException("CSV must have 'date' and 'rate' columns.")
+            index_curve = dict(zip(df['date'].astype(str), df['rate'].astype(float)))
+        elif kwargs['index_curve_file'].endswith('.json'):
+            with open(kwargs['index_curve_file']) as f:
+                index_curve_raw = json.load(f)
+            index_curve = {k.strip(): float(v) for k, v in index_curve_raw.items()}
+    if kwargs.get('index_curve'):
+        try:
+            index_curve = {k.strip(): float(v) for k, v in json.loads(kwargs['index_curve']).items()}
+        except Exception as e:
+            raise click.ClickException(f"Invalid index-curve JSON: {e}")
+
+    # Construct the Loan object
+    if kwargs['loan_type'] == 'arm':
+        if not kwargs['index']:
+            raise click.BadParameter("ARM loans require --index to be specified.")
+
+        if not kwargs.get('caps') or kwargs['caps'] == (2.0, 1.0, 5.0):
+            click.echo("Using default ARM caps: Initial=2.0%, Periodic=1.0%, Lifetime=5.0%")
+        else:
+            click.echo(f"ARM caps used: Initial={caps[0]}%, Periodic={caps[1]}%, Lifetime={caps[2]}%")
+
+        if not kwargs.get('floors') or kwargs['floors'] == (0.0, 0.0, 0.0):
+            click.echo("Using default ARM floors: Initial=0.0%, Periodic=0.0%, Lifetime=0.0%")
+        else:
+            click.echo(f"ARM floors used: Initial={floors[0]}%, Periodic={floors[1]}%, Lifetime={floors[2]}%")
+
+
+        # Use user-provided rate only if they intend to override
+        user_rate = Decimal(str(kwargs['rate'])) if 'rate' in kwargs and kwargs['rate'] is not None else None
+
+        loan = Loan.from_arm(
+            principal=principal,
+            term=kwargs['term'],
+            arm_type=kwargs['arm_structure'],
+            index=kwargs['index'],
+            margin=kwargs['margin'],
+            origination_date=start,
+            rate=user_rate,
+            caps=caps,
+            floors=floors,
+            forward_curve=index_curve
+        )
+    elif kwargs['loan_type'] == 'heloc':
+        loan = Loan(
+            principal=principal,
+            term_months=kwargs['term'],
+            rate=Decimal(str(kwargs['rate'])),
+            origination_date=start,
+            loan_type='heloc',
+            compounding='30E/360',
+            draw_period_months=kwargs['draw_period'],
+            repayment_term_months=kwargs['repayment_term'],
+            extra_payment_amount=kwargs['extra_payment'],
+            extra_payment_frequency=kwargs['extra_frequency'],
+            margin=Decimal(str(kwargs['margin']))
+        )
+        loan.index = kwargs['index']
+        loan.forward_curve = index_curve
         loan.rate_bounds.update({
-            'initial_floor': Decimal(str(kwargs['floors'][0])),
-            'periodic_floor': Decimal(str(kwargs['floors'][1])),
-            'lifetime_floor': Decimal(str(kwargs['floors'][2])),
+            'initial_cap': Decimal(str(caps[0])),
+            'periodic_cap': Decimal(str(caps[1])),
+            'lifetime_cap': Decimal(str(caps[2])),
+            'initial_floor': Decimal(str(floors[0])),
+            'periodic_floor': Decimal(str(floors[1])),
+            'lifetime_floor': Decimal(str(floors[2])),
         })
+    else:
+        # Fixed, FHA, VA, USDA
+        loan = Loan(
+            principal=principal,
+            term_months=kwargs['term'],
+            rate=Decimal(str(kwargs['rate'])),
+            origination_date=start,
+            loan_type=kwargs['loan_type'],
+            compounding='30E/360',
+            extra_payment_amount=kwargs['extra_payment'],
+            extra_payment_frequency=kwargs['extra_frequency']
+        )
 
-    if kwargs['recast_date'] and kwargs['lump_sum'] > 0:
-        loan.recast(kwargs['lump_sum'], datetime.strptime(kwargs['recast_date'], '%Y-%m-%d').date())
+
+    recast_schedule = {}
+
+    if kwargs['recast_month'] is not None:
+        recast_schedule[kwargs['recast_month']] = kwargs['term'] - kwargs['recast_month'] + 1
+    elif kwargs['recast_date']:
+        recast_date = datetime.strptime(kwargs['recast_date'], '%Y-%m-%d').date()
+        recast_month = (recast_date.year - start.year) * 12 + (recast_date.month - start.month) + 1
+        recast_schedule[recast_month] = kwargs['term'] - recast_month + 1
 
     if kwargs['refinance_date'] and kwargs['new_rate'] is not None:
         loan = loan.refinance(
@@ -101,29 +201,40 @@ def amortize(**kwargs):
             fees=kwargs['refi_fees']
         )
 
-    custom_rates = {}
-    if kwargs['rate_file']:
-        if kwargs['rate_file'].endswith('.csv'):
-            df = pd.read_csv(kwargs['rate_file'])
-            custom_rates = dict(zip(df['date'], df['rate']))
-        elif kwargs['rate_file'].endswith('.json'):
-            with open(kwargs['rate_file']) as f:
-                custom_rates = json.load(f)
 
-    if loan.loan_type in ['arm', 'heloc'] and loan.index and not custom_rates and not loan.forward_curve:
-        click.echo("Warning: No rate file or forward curve provided. Assuming static index rate with caps/floors applied.")
+    curtailments = parse_curtailments(kwargs['curtailments']) if kwargs['curtailments'] else {}
 
     amortizer = LoanAmortizer(
         loan,
-        custom_rate_schedule=custom_rates,
+        custom_rate_schedule={},
         start_month=kwargs['start_month'],
         starting_balance=kwargs['starting_balance'],
         starting_date=datetime.strptime(kwargs['starting_date'], '%Y-%m-%d').date() if kwargs['starting_date'] else None,
-        balloon_month=kwargs.get('balloon_month')
+        balloon_month=kwargs.get('balloon_month'),
+        curtailments=curtailments,
+        recast_schedule= recast_schedule
     )
 
     df = amortizer.to_dataframe()
-    click.echo(df.head(12).to_markdown(index=False))
+
+    # Format currency columns with $ and commas
+    currency_cols = [
+        "Payment", "Principal", "Interest", "PMI/MIP", "Extra Payment",
+        "Total Payment", "Beginning Balance", "Ending Balance"
+    ]
+    for col in currency_cols:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: f"${x:,.2f}")
+
+    trunc_df = df.copy()
+    if kwargs['months']:
+        trunc_df = trunc_df[trunc_df['Month'] <= kwargs['months']]
+
+    # Display full if months provided, otherwise show first 12 rows
+    display_df = trunc_df if kwargs.get("months") else df.head(12)
+
+    # Output as Markdown
+    click.echo(display_df.to_markdown(index=False))
 
     if kwargs['points'] > 0.0 or kwargs['refi_fees'] > 0.0 or kwargs['show_apr']:
         net_proceeds = Decimal(str(kwargs['balance']))
@@ -144,6 +255,7 @@ def amortize(**kwargs):
     if kwargs['plot']:
         plot_amortization_curve(df)
         plt.show()
+    
 
 @cli.command("compare-apr", help="Compare effective APR accounting for points and fees.")
 @click.option('--principal', type=float, required=True, help="Loan amount.")

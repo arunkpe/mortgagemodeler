@@ -1,7 +1,25 @@
 # Python packaging
+
+# Build artifacts
 *.egg-info/
-dist/
 build/
+dist/
+
+# Bytecode
 __pycache__/
 *.py[cod]
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Other
 READMEPyPi.md
+reinstall
