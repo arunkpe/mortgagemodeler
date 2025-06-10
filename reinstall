@@ -1,0 +1,5 @@
+pip uninstall mortgagemodeler -y
+rm -rf build dist *.egg-info temp_whl
+python -m build
+pip install dist/*.whl
+

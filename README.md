@@ -9,9 +9,27 @@
 
 **MortgageModeler** is a professional-grade Python toolkit and CLI for simulating, analyzing, and comparing mortgage loans. Supports **fixed-rate**, **ARM**, **FHA**, **VA**, **USDA**, and **HELOC** loans with advanced logic for **recasting**, **refinancing**, **extra payment plans**, and **APR and breakeven analysis**.
 
+All features — from extra payments and ARM resets to refinance and recast — are available in both the CLI and Python API, making MortgageModeler ideal for scripting, financial modeling, or interactive analysis.
+
 ## Why MortgageModeler?
 
 Most open-source tools in the mortgage and personal finance space are either overly simplistic or narrowly focused on generic amortization tables. **MortgageModeler** goes far beyond as tou can see in the features set and possible analytics.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Supported Loan Types](#supported-loan-types)
+- [Quick Start](#quick-start)
+- [Analytics](#analytics)
+- [CLI Usage](#cli-usage)
+- [Modeling Capabilities](#modeling-capabilities)
+- [Scenario Analysis](#scenario-analysis-out-of-the-box)
+- [Use Cases](#use-cases)
+- [Requirements](#requirements)
+- [Install](#install)
+- [License](#license)
 
 ---
 
@@ -29,6 +47,7 @@ Most open-source tools in the mortgage and personal finance space are either ove
 - **Matplotlib visualizations** and CSV/JSON export
 - Powerful **CLI and Python API**
 
+---
 
 ###  Supported Loan Types
 
@@ -59,6 +78,8 @@ cd mortgagemodeler
 pip install -r requirements.txt
 ```
 
+---
+
 ## Analytics
 
 ### ARM vs Fixed-Rate Mortgage Analysis
@@ -73,14 +94,27 @@ Highlights:
 - Total cost to exit after 5 years (payments + balance)
 - Clear matplotlib visuals 
 
+
 ### Explore Mortgage Types
 
 Compare amortization schedules, interest paths, and exit costs across loan types like Fixed, FHA, VA, and HELOC.
 
 ▶️ [View Full Notebook »](examples/LoanTypes.ipynb)
 
+---
 
 ## CLI Usage
+
+### Complex Scenario Modeling on ARM Loans
+
+```bash
+     mortgagemodeler amortize --type arm \                 # Amortize an ARM loan
+     --balance 800000 --rate 5.25 --term 360 \             # Starting Rate @5.25% on $800,000 Loan Amount
+     --margin 2.5   --arm-structure 3/1 --index SOFR \     # 3/1 ARM SOFR Indexed Margin = 2.5%
+     --index-curve '{"2027-07-01": 4.0}'             \     # Feed Custom Index spot/forward curve - term length
+     --curtailments 300000@42   --recast-month 45    \     # Apply $300,000 curtailment in month 42 and recast 
+     --months 60                                     \     # Show 60 month amortization table
+```
 
 ### Amortization
 
@@ -101,31 +135,7 @@ Compare amortization schedules, interest paths, and exit costs across loan types
     --balance 400000 \
     --rate 6.25 \
     --term 360 \
-    --recast-date 2026-06-01 \
-    --lump-sum 10000
-```
-
-### Recast
-
-```bash
-    mortgagemodeler amortize \
-    --balance 400000 \
-    --rate 6.25 \
-    --term 360 \
-    --recast-date 2026-06-01 \
-    --lump-sum 10000
-```
-
-### Refinance
-
-```bash
-    mortgagemodeler amortize \
-    --balance 400000 \
-    --rate 6.25 \
-    --term 360 \
-    --refinance-date 2026-06-01 \
-    --new-rate 5.75 \
-    --refi-fees 4500
+    --recast-date 2026-06-01 
 ```
 
 ### Compare Scenarios
@@ -154,8 +164,9 @@ Compare amortization schedules, interest paths, and exit costs across loan types
     --monthly-savings 150 \
     --closing-costs 4500
 ```
+---
 
-### Library Usage
+### Library API Usage
 
 ```python
     from mortgage_tools.loan import Loan
@@ -176,13 +187,15 @@ Compare amortization schedules, interest paths, and exit costs across loan types
     df.head()
 ```
 
+---
+
 
 ###  Modeling Capabilities
 
 | Capability                  | Description                                            |
 | --------------------------- | ------------------------------------------------------ |
 | **Extra Payments**          | Monthly or biweekly, configurable amount and frequency |
-| **Recast Support**          | Manual recast at any month with lump sum               |
+| **Recast Support**          | Trigger payment recalculation. Integrated amortizer    |
 | **Refinance**               | New rate/term, fees rolled in or out, APR adjusted     |
 | **APR Calculation**         | Effective APR including points and costs               |
 | **Breakeven Analysis**      | Time to recoup refi closing costs                      |
@@ -190,6 +203,7 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 | **Balloon Payments**        | Optional final lump sum triggers schedule termination  |
 | **Custom Start Month**      | Support mid-life entry for ongoing loans               |
 
+---
 
 ### Core Features
 
@@ -208,8 +222,9 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 | **CSV and JSON Export**        | Full amortization schedule can be exported for further analysis                               |
 | **Matplotlib Visualizations**  | Built-in plotting for amortization curves, cumulative interest, and scenario comparisons      |
 
+---
 
-### Scenario Analysis out of the box
+### Built-in Scenario Analysis
 
 | Capability                       | Description                                                                                    |
 | -------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -221,12 +236,13 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 | **Investment vs Owner-Occupant** | Use recast/refi logic to simulate different borrower strategies (aggressive payoff vs refi)    |
 | **Cash Flow Visibility**         | Monthly tracking of principal, interest, insurance, and extra payments                         |
 
+---
 
 ### Use Cases
 
 | Scenario                      | Description                                                                                                                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fixed vs ARM Decision**     | Simulate and visualize whether a 5/1 or 7/6 ARM outperforms a 30-year fixed loan if the borrower exits in 5–7 years. Compare interest savings, payment volatility, and break-even timelines. |
+| **Fixed vs ARM Decision**     | Simulate and visualize whether a 5/1 or 7/6 ARM outperforms a 30-year fixed loan if the borrower exits in 5–7 years. Compare interest costs, payment trajectories, and refinance thresholds. |
 | **Extra Payment Strategies**  | Evaluate how an extra \$250/month or biweekly payments impact the term, total interest paid, and time to payoff.                                                                             |
 | **Recast vs Refinance**       | Model lump-sum recast vs full refinance with closing costs. Quantify tradeoffs between interest savings, lower payments, and costs.                                                          |
 | **Rate Shock Testing**        | Apply SOFR-based forward curves or inject manual interest rate paths (e.g. +3% over 3 years) to test payment sensitivity in ARM and HELOC scenarios.                                         |
@@ -235,6 +251,7 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 | **Balloon Mortgage Planning** | (Planned) Understand how a 7/23 or 5/25 balloon affects long-term affordability and required refinance options.                                                                              |
 | **First-Time Buyer Toolkit**  | Build customized profiles (e.g. 3.5% down FHA vs 10% down conventional) and simulate cash needed, monthly payment, and 5-year outlook.                                                       |
 
+---
 
 ### Requirements
 
@@ -247,16 +264,14 @@ numpy_financial
 tabulate
 python-dotenv
 
-### Install
+---
 
-```bash
-pip install -r requirements.txt
-```
 
 ### License
 
 This project is licensed under the [MIT License](LICENSE).
 
+---
 
 ### Author
 

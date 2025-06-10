@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, Dict
 
 
 class Loan:
@@ -31,12 +31,53 @@ class Loan:
     extra_payment_frequency : str, optional
         Frequency of extra payments ('monthly', 'biweekly').
     """
+
+    # Core attributes
+    principal: Decimal
+    original_balance: Decimal
+    term: int
+    rate: Decimal
+    origination_date: date
+    loan_type: str
+    compounding: str
+    is_pmi: bool
+    is_fixed: bool
+
+    # ARM-related attributes
+    is_arm: bool
+    index: Optional[str]
+    margin: Decimal
+    arm_structure: Optional[Tuple[int, int]]
+    forward_curve: Optional[Dict[str, float]]
+    rate_bounds: Dict[str, Decimal]
+
+    # HELOC
+    draw_period_months: int
+    repayment_term_months: int
+    is_heloc: bool
+
+    # FHA
+    is_fha: bool
+    fha_upfront: Decimal
+    fha_monthly: Decimal
+
+    # VA/USDA
+    is_va: bool
+    is_usda: bool
+    guarantee_fee: Decimal
+    usda_annual_fee: Decimal
+
+    # Extra payments
+    extra_payment_amount: Decimal
+    extra_payment_frequency: Optional[str]
+
     def __init__(self, principal, term_months, rate, origination_date: date,
                  loan_type='fixed', compounding='30E/360', pmi=False,
                  draw_period_months: Optional[int] = None, repayment_term_months: Optional[int] = None,
                  arm_structure: Optional[Tuple[int, int]] = None,
                  extra_payment_amount: Optional[Union[float, Decimal]] = None,
-                 extra_payment_frequency: Optional[str] = None):
+                 extra_payment_frequency: Optional[str] = None,
+                 margin: Optional[Union[float, Decimal]] = None):
         self.principal = Decimal(str(principal))
         self.original_balance = Decimal(str(principal))
         self.term = term_months
@@ -46,13 +87,13 @@ class Loan:
         self.compounding = compounding
         self.is_pmi = pmi
         self.is_fixed = loan_type == 'fixed'
-        
+
         # ARM attributes
         self.is_arm = loan_type == 'arm'
         self.index = None
-        self.margin = Decimal("0.00")
-        self.arm_structure = arm_structure if self.loan_type == 'arm' else None
-        self.forward_curve = None  # Optional forward rate schedule (date -> rate)
+        self.margin = Decimal(str(margin)) if margin is not None else Decimal("0.00")
+        self.arm_structure = arm_structure if self.is_arm else None
+        self.forward_curve = None
         self.rate_bounds = {
             'initial_cap': Decimal("2.0"),
             'periodic_cap': Decimal("1.0"),
@@ -99,7 +140,6 @@ class Loan:
             loan_type='fixed',
             **kwargs
         )
-
 
     @classmethod
     def from_arm(cls, principal, term, arm_type, index, margin, origination_date,
@@ -156,20 +196,39 @@ class Loan:
         }
         return loan
 
-    @classmethod
-    def from_fha(cls, principal, term, rate, origination_date):
-        """Construct an FHA loan object."""
-        return cls(principal, term, rate, origination_date, loan_type='fha')
+    def is_reset_month_a(self, month_number: int) -> bool:
+        """
+        Determine whether the given month number is a rate reset month for an ARM.
 
-    @classmethod
-    def from_va(cls, principal, term, rate, origination_date):
-        """Construct a VA loan object."""
-        return cls(principal, term, rate, origination_date, loan_type='va')
+        Parameters
+        ----------
+        month_number : int
+            The 1-based month index of the loan schedule.
 
-    @classmethod
-    def from_usda(cls, principal, term, rate, origination_date):
-        """Construct a USDA loan object."""
-        return cls(principal, term, rate, origination_date, loan_type='usda')
+        Returns
+        -------
+        bool
+            True if the month is a reset month; False otherwise.
+        """
+        if not self.is_arm or not self.arm_structure:
+            return False
+        fixed_months = self.arm_structure[0] * 12
+        reset_freq = self.arm_structure[1]
+        return (month_number > fixed_months) and ((month_number - fixed_months) % reset_freq == 0)
+
+
+    def is_reset_month(self, month):
+        """Check if this month triggers an ARM rate reset"""
+        if self.loan_type != 'arm'  or not self.arm_structure:
+            return False
+        
+        fixed_months = self.arm_structure[0] * 12  # 36 for 3/1 ARM
+        if month <= fixed_months:
+            return False
+        
+        reset_freq_months = self.arm_structure[1] * 12  # 12 for annual resets
+        return (month - fixed_months - 1) % reset_freq_months == 0
+
 
     def set_indexed_rate(self, index_name: str, margin: float, caps=(2, 1, 5)):
         """Configure index-based rate adjustment (for ARMs or HELOCs).
@@ -233,4 +292,3 @@ class Loan:
             "extra_payment_amount": float(self.extra_payment_amount),
             "extra_payment_frequency": self.extra_payment_frequency
         }
-
