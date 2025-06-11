@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/arunkpe/mortgagemodeler/HEAD)
 [![PyPI](https://img.shields.io/pypi/v/mortgagemodeler)](https://pypi.org/project/mortgagemodeler/)
+[![PyPI Downloads](https://static.pepy.tech/badge/mortgagemodeler)](https://pepy.tech/projects/mortgagemodeler)
 
 **MortgageModeler** is a professional-grade Python toolkit and CLI for simulating, analyzing, and comparing mortgage loans. Supports **fixed-rate**, **ARM**, **FHA**, **VA**, **USDA**, and **HELOC** loans with advanced logic for **recasting**, **refinancing**, **extra payment plans**, and **APR and breakeven analysis**.
 
