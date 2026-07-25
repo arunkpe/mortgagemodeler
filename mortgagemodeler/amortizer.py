@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -8,6 +8,7 @@ import pandas as pd
 
 from mortgagemodeler.utils.interest import calculate_interest
 from mortgagemodeler.utils.rates import RateReader
+from mortgagemodeler.utils.date import normalize_date
 
 from typing import Optional, Dict
 
@@ -53,13 +54,14 @@ class LoanAmortizer:
         self.rates = RateReader() if loan.loan_type in ['arm', 'heloc'] else None
 
         self.start_month = start_month
-        self.starting_balance = Decimal(starting_balance) if starting_balance else loan.principal
-        self.starting_date = starting_date or loan.origination_date
+        self.starting_balance = Decimal(str(starting_balance)) if starting_balance else loan.principal
+        self.starting_date = normalize_date(starting_date) if starting_date else normalize_date(loan.origination_date)
         self.balloon_month = balloon_month
+        self.early_payoff_month = None
 
         self.original_term = loan.term
         self.recast_schedule = recast_schedule or {}  # Dict of {month: new_term}
-        self.curtailments = curtailments or {}  
+        self.curtailments = curtailments or {}
 
 
         if self.custom_rate_schedule:
@@ -68,11 +70,18 @@ class LoanAmortizer:
             self.rate_source = RateSource.INDEX
         else:
             self.rate_source = RateSource.STATIC
-        #print(f"[DEBUG INIT] Rate source selected: {self.rate_source}", flush=True)
+
+        self._arm_has_reset = False
 
         if not loan.is_heloc:
+            # For mid-life entry (start_month > 1) the payment must amortize
+            # the starting balance over the REMAINING term, not the full term.
+            remaining_term = loan.term - self.start_month + 1
             monthly_rate = self.initial_rate / Decimal("12") / Decimal("100")
-            self.scheduled_payment = (self.starting_balance * monthly_rate / (1 - (1 + monthly_rate) ** -loan.term)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if monthly_rate == 0:
+                self.scheduled_payment = (self.starting_balance / Decimal(remaining_term)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            else:
+                self.scheduled_payment = (self.starting_balance * monthly_rate / (1 - (1 + monthly_rate) ** -remaining_term)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         else:
             self.scheduled_payment = None
 
@@ -162,10 +171,14 @@ class LoanAmortizer:
                     break
         elif self.rates is not None:
             try:
-                base_rate = Decimal(str(self.rates.get_rate(self.loan.index, date_str)))
-                is_index_used = True
+                fetched = self.rates.get_rate(self.loan.index, date_str)
             except Exception:
-                pass
+                fetched = None
+            # A missing rate file or date must NOT be treated as a 0% index;
+            # fall through and hold the last known rate instead.
+            if fetched is not None:
+                base_rate = Decimal(str(fetched))
+                is_index_used = True
 
         if base_rate is None:
             base_rate = self.last_rate
@@ -175,7 +188,14 @@ class LoanAmortizer:
         else:
             proposed = base_rate.quantize(Decimal("0.0001"))
 
+        rate_bounds = self.loan.rate_bounds or {}
+        lifetime_ceiling = self.initial_rate + Decimal(str(rate_bounds.get('lifetime_cap', '5.0')))
+        lifetime_floor = max(Decimal(str(rate_bounds.get('lifetime_floor', '0.0'))), Decimal("0"))
+
         if self.loan.loan_type == 'heloc':
+            # HELOCs reprice with the index but remain subject to the
+            # lifetime cap/floor.
+            proposed = min(max(proposed, lifetime_floor), lifetime_ceiling)
             if proposed != self.last_rate:
                 self.last_rate = proposed
                 return proposed, True
@@ -183,18 +203,19 @@ class LoanAmortizer:
 
         if self.loan.loan_type == 'arm':
             if self.loan.is_reset_month(month):
-                rate_bounds = self.loan.rate_bounds or {}
-                cap = Decimal(rate_bounds.get('periodic_cap', '1.0'))
-                upper = self.last_rate + cap
-                lower = self.last_rate - cap
-                capped = min(max(proposed, lower), upper)
+                # The initial cap governs the first reset; the periodic cap
+                # governs each subsequent reset. Floors are absolute rates.
+                first_reset = not self._arm_has_reset
+                cap = Decimal(str(rate_bounds.get('initial_cap' if first_reset else 'periodic_cap', '1.0')))
+                reset_floor = max(
+                    Decimal(str(rate_bounds.get('initial_floor' if first_reset else 'periodic_floor', '0.0'))),
+                    lifetime_floor,
+                )
+                capped = min(max(proposed, self.last_rate - cap), self.last_rate + cap)
+                capped = min(max(capped, reset_floor), lifetime_ceiling)
 
-                max_life = Decimal(rate_bounds.get('lifetime_cap', '5.0'))
-                min_life = Decimal(rate_bounds.get('lifetime_floor', '0.0'))
-                capped = min(max(capped, self.initial_rate - min_life), self.initial_rate + max_life)
-
+                self._arm_has_reset = True
                 self.last_rate = capped
-                #print(f"[DEBUG] Month {month} Reset → Index: {base_rate}, Margin: {self.loan.margin}, Proposed: {proposed}, Capped: {capped}")
                 return capped, True
 
             return self.last_rate, False
@@ -225,6 +246,7 @@ class LoanAmortizer:
         for month in range(self.start_month, total_term + 1):
             # 1. Record the balance at the beginning of the month
             beginning_balance = balance
+            prev_date = current_date
             current_date += relativedelta(months=1)
             date_str = current_date.strftime('%Y-%m-%d')
 
@@ -239,8 +261,14 @@ class LoanAmortizer:
             rate, reset_triggered = self._get_effective_rate(date_str, month)
             self.last_rate = rate  # Always update for continuity
 
-            # 4. Compute monthly interest (after curtailment)
-            interest = Decimal(calculate_interest(balance, rate, 30, self.loan.compounding)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            # 4. Compute monthly interest (after curtailment). Actual/xxx
+            # conventions accrue over the actual days in the period; 30/360
+            # conventions use a flat 30 days.
+            if self.loan.compounding.upper().startswith("A/"):
+                accrual_days = (current_date - prev_date).days
+            else:
+                accrual_days = 30
+            interest = Decimal(calculate_interest(balance, rate, accrual_days, self.loan.compounding)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             # 5. Compute scheduled payment (HELOC vs. amortizing loan)
             if self.loan.is_heloc:
@@ -284,9 +312,11 @@ class LoanAmortizer:
             # 7. Calculate insurance (PMI/MIP/USDA fees, etc.)
             insurance = self._calculate_insurance(balance, month)
 
-            # 8. Ensure we don’t overpay in final months
+            # 8. Ensure we don’t overpay in final months; in the terminal
+            # month of the term, sweep any rounding residual so the loan
+            # actually pays to zero.
             total_principal = principal + extra
-            if total_principal > balance:
+            if total_principal > balance or (month == total_term and total_principal < balance and not self.loan.is_heloc):
                 total_principal = balance
                 extra = min(extra, balance)
                 principal = total_principal - extra

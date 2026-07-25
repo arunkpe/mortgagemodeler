@@ -1,0 +1,13 @@
+Code,Description
+UNRATE,Civilian Unemployment Rate
+CPILFESL,Core CPI (All Items Less Food and Energy)
+CPIAUCSL,CPI (All Urban Consumers)
+USSTHPI,FHFA US All-Transactions House Price Index
+SOFR,Secured Overnight Financing Rate
+SOFR30DAYAVG,30-Day Average SOFR
+FEDFUNDS,Effective Federal Funds Rate
+DPRIME,Bank Prime Loan Rate
+DGS1,1-Year Treasury Constant Maturity Rate
+DGS10,10-Year Treasury Constant Maturity Rate
+MORTGAGE30US,30-Year Fixed Rate Mortgage Average (Freddie Mac PMMS)
+MORTGAGE15US,15-Year Fixed Rate Mortgage Average (Freddie Mac PMMS)

@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, Union, Tuple, Dict
-
+from mortgagemodeler.utils.date import normalize_date
 
 class Loan:
     """Base Loan class supporting various mortgage types.
@@ -31,6 +31,15 @@ class Loan:
     extra_payment_frequency : str, optional
         Frequency of extra payments ('monthly', 'biweekly').
     """
+
+    #: Commercial ARM products mapped to (fixed_period_years, reset_frequency_months).
+    #: '5/6' fixes for 5 years then resets every 6 months; '5/5' resets every 5 years.
+    ARM_PRODUCT_MAP = {
+        '3/1': (3, 12), '3/6': (3, 6),
+        '5/1': (5, 12), '5/5': (5, 60), '5/6': (5, 6),
+        '7/1': (7, 12), '7/6': (7, 6),
+        '10/1': (10, 12), '10/6': (10, 6),
+    }
 
     # Core attributes
     principal: Decimal
@@ -82,7 +91,7 @@ class Loan:
         self.original_balance = Decimal(str(principal))
         self.term = term_months
         self.rate = Decimal(str(rate))
-        self.origination_date = origination_date
+        self.origination_date = normalize_date(origination_date)
         self.loan_type = loan_type
         self.compounding = compounding
         self.is_pmi = pmi
@@ -150,7 +159,10 @@ class Loan:
         Parameters
         ----------
         arm_type : str
-            Format like '5/6' where 5 = fixed period (years), 6 = reset frequency (months).
+            A commercial ARM product name like '5/6' (5-year fixed period,
+            resets every 6 months thereafter). Resolved via ARM_PRODUCT_MAP,
+            so '5/1' means annual resets and '5/5' means resets every 5 years,
+            matching market convention.
         index : str
             Name of reference index (e.g., 'SOFR').
         margin : float
@@ -160,17 +172,31 @@ class Loan:
         rate : float, optional
             Initial rate; if not given, inferred from index + margin.
         caps : tuple
-            (initial cap, periodic cap, lifetime cap)
+            (initial cap, periodic cap, lifetime cap). Initial/periodic caps
+            bound the rate movement at the first/subsequent resets; the
+            lifetime cap bounds the rate at initial rate + lifetime cap.
         floors : tuple
-            (initial floor, periodic floor, lifetime floor)
+            (initial floor, periodic floor, lifetime floor), expressed as
+            absolute floor rates (default 0.0 = the rate cannot go negative).
         forward_curve : dict, optional
             Optional dict of {date: rate} to override index source.
         """
-        fixed, freq = map(int, arm_type.split('/'))
+        if arm_type in cls.ARM_PRODUCT_MAP:
+            fixed, freq = cls.ARM_PRODUCT_MAP[arm_type]
+        else:
+            raise ValueError(
+                f"Unknown ARM structure '{arm_type}'. Supported: {', '.join(sorted(cls.ARM_PRODUCT_MAP))}"
+            )
 
         if rate is None:
-            orig_str = origination_date.strftime('%Y-%m-%d')
-            base_rate = Decimal(str(forward_curve.get(orig_str, 0.0))) if forward_curve else Decimal("0.0")
+            origination_date = normalize_date(origination_date)
+            base_rate = Decimal("0.0")
+            if forward_curve:
+                # Use the most recent curve point on or before origination.
+                past = [d for d in sorted(forward_curve)
+                        if datetime.strptime(d, '%Y-%m-%d').date() <= origination_date]
+                if past:
+                    base_rate = Decimal(str(forward_curve[past[-1]]))
             start_rate = base_rate + Decimal(str(margin))
         else:
             start_rate = Decimal(str(rate))
@@ -196,39 +222,23 @@ class Loan:
         }
         return loan
 
-    def is_reset_month_a(self, month_number: int) -> bool:
-        """
-        Determine whether the given month number is a rate reset month for an ARM.
-
-        Parameters
-        ----------
-        month_number : int
-            The 1-based month index of the loan schedule.
-
-        Returns
-        -------
-        bool
-            True if the month is a reset month; False otherwise.
-        """
-        if not self.is_arm or not self.arm_structure:
-            return False
-        fixed_months = self.arm_structure[0] * 12
-        reset_freq = self.arm_structure[1]
-        return (month_number > fixed_months) and ((month_number - fixed_months) % reset_freq == 0)
-
-
     def is_reset_month(self, month):
-        """Check if this month triggers an ARM rate reset"""
-        if self.loan_type != 'arm'  or not self.arm_structure:
+        """Check if this month triggers an ARM rate reset.
+
+        ``arm_structure`` is (fixed_period_years, reset_frequency_months):
+        a 5/6 ARM — stored as (5, 6) — first resets at month 61 and every
+        6 months thereafter; a 3/1 ARM — stored as (3, 12) — resets annually
+        starting at month 37.
+        """
+        if self.loan_type != 'arm' or not self.arm_structure:
             return False
-        
-        fixed_months = self.arm_structure[0] * 12  # 36 for 3/1 ARM
+
+        fixed_months = self.arm_structure[0] * 12  # e.g. 36 for a 3/1 ARM
         if month <= fixed_months:
             return False
-        
-        reset_freq_months = self.arm_structure[1] * 12  # 12 for annual resets
-        return (month - fixed_months - 1) % reset_freq_months == 0
 
+        reset_freq_months = self.arm_structure[1]  # already expressed in months
+        return (month - fixed_months - 1) % reset_freq_months == 0
 
     def set_indexed_rate(self, index_name: str, margin: float, caps=(2, 1, 5)):
         """Configure index-based rate adjustment (for ARMs or HELOCs).
@@ -244,12 +254,39 @@ class Loan:
         """
         self.index = index_name.upper()
         self.margin = Decimal(str(margin))
-        self.caps = {'initial': caps[0], 'periodic': caps[1], 'lifetime': caps[2]}
+        self.rate_bounds.update({
+            'initial_cap': Decimal(str(caps[0])),
+            'periodic_cap': Decimal(str(caps[1])),
+            'lifetime_cap': Decimal(str(caps[2])),
+        })
 
-    def refinance(self, new_rate: float, refinance_date: date, new_term: Optional[int] = None, fees: float = 0.0):
-        """Creates a new Loan object simulating a refinance at a given date."""
-        return Loan(
-            principal=self.principal + Decimal(str(fees)),
+    def refinance(self, new_rate: float, refinance_date: date, new_term: Optional[int] = None,
+                  fees: float = 0.0, balance: Optional[Union[float, Decimal]] = None):
+        """Creates a new Loan object simulating a refinance at a given date.
+
+        Parameters
+        ----------
+        new_rate : float
+            Interest rate on the new loan.
+        refinance_date : date
+            Origination date of the new loan.
+        new_term : int, optional
+            Term of the new loan in months. Defaults to the current term.
+        fees : float
+            Closing costs rolled into the new balance.
+        balance : float or Decimal, optional
+            Outstanding balance being refinanced. Defaults to the current
+            principal. Pass the amortized balance as of ``refinance_date``
+            for an accurate mid-life refinance.
+
+        Notes
+        -----
+        Upfront FHA/VA/USDA fees financed at original closing are already in
+        the balance and are NOT charged a second time.
+        """
+        base = Decimal(str(balance)) if balance is not None else self.principal
+        new_loan = Loan(
+            principal=base,
             term_months=new_term or self.term,
             rate=new_rate,
             origination_date=refinance_date,
@@ -262,12 +299,21 @@ class Loan:
             extra_payment_frequency=self.extra_payment_frequency,
             arm_structure=self.arm_structure if self.loan_type == 'arm' else None,
         )
+        # The constructor re-applies financed upfront fees for FHA/VA/USDA
+        # loan types; a refinance must not pay them twice, so reset the
+        # balance to refinanced principal plus closing costs.
+        new_loan.principal = base + Decimal(str(fees))
+        new_loan.original_balance = new_loan.principal
+        return new_loan
 
     def recast(self, lump_sum: float, recast_date: date):
-        """Apply a lump-sum principal reduction and update loan balance."""
+        """Apply a lump-sum principal reduction and update loan balance.
+
+        ``original_balance`` is intentionally left unchanged: PMI drop-off is
+        based on LTV against the original loan amount, not the recast balance.
+        """
         self.principal -= Decimal(str(lump_sum))
-        self.origination_date = recast_date
-        self.original_balance = self.principal
+        self.origination_date = normalize_date(recast_date)
 
     def apply_extra_payment(self, amount: float, frequency: str):
         """Set up recurring extra payments."""

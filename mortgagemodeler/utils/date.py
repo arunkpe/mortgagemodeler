@@ -18,3 +18,13 @@ def end_of_month(date_str: str) -> date:
     dt = datetime.strptime(date_str, "%Y-%m-%d").date()
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return date(dt.year, dt.month, last_day)
+
+# utils/date.py
+def normalize_date(d):
+    if isinstance(d, str):
+        return datetime.strptime(d, "%Y-%m-%d").date()
+    elif isinstance(d, datetime):
+        return d.date()
+    elif isinstance(d, date):
+        return d
+    raise TypeError(f"Invalid date type: {type(d)}")

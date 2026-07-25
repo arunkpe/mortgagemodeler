@@ -34,4 +34,5 @@ def effective_apr(principal, rate, term_months, points=0.0, fees=0.0):
     if internal_rate is None:
         return None
 
-    return round((1 + internal_rate) ** 12 - 1, 5) * 100  # Convert monthly IRR to annual %
+    # Convert monthly IRR to annual %, rounding AFTER scaling to percent.
+    return round(((1 + internal_rate) ** 12 - 1) * 100, 4)

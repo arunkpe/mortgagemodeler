@@ -20,8 +20,14 @@ class FredFetcher:
             Your FRED API key. If not provided, will attempt to read from the environment variable 'FRED_API_KEY'.
         """
         self.api_key = api_key or os.getenv("FRED_API_KEY")
-        self.fred = Fred(api_key=self.api_key)
+        self._fred = None  # lazy: available_codes()/sanitize() need no API key
         self.base_dir = os.path.dirname(__file__)
+
+    @property
+    def fred(self) -> Fred:
+        if self._fred is None:
+            self._fred = Fred(api_key=self.api_key)
+        return self._fred
 
     def available_codes(self) -> pd.DataFrame:
         """
