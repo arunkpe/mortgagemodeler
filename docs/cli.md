@@ -9,7 +9,7 @@ The toolkit includes a powerful CLI for simulating amortization schedules, compa
 Once installed (see [README](index.md)), you can invoke the CLI:
 
 ```bash
-python -m cli.cli [command] [options]
+mortgagemodeler [command] [options]
 ```
 
 Or install a shortcut entry point:

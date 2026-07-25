@@ -15,7 +15,7 @@ Simulating a $100,000 HELOC with a 10-year interest-only draw and 15-year repaym
 ## CLI Command
 
 ```bash
-python -m cli.cli amortize \
+mortgagemodeler amortize \
   --type heloc \
   --balance 100000 \
   --rate 6.5 \

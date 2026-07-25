@@ -74,7 +74,7 @@ pip install mortgagemodeler
 Or from source
 
 ```bash
-git clone https://github.com/yourusername/mortgagemodeler.git
+git clone https://github.com/arunkpe/mortgagemodeler.git
 cd mortgagemodeler
 pip install -r requirements.txt
 ```
@@ -136,7 +136,8 @@ Compare amortization schedules, interest paths, and exit costs across loan types
     --balance 400000 \
     --rate 6.25 \
     --term 360 \
-    --recast-date 2026-06-01 
+    --recast-date 2026-06-01 \
+    --lump-sum 50000
 ```
 
 ### Compare Scenarios
@@ -170,8 +171,8 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 ### Library API Usage
 
 ```python
-    from mortgage_tools.loan import Loan
-    from mortgage_tools.amortizer import LoanAmortizer
+    from datetime import date
+    from mortgagemodeler import Loan, LoanAmortizer
 
     loan = Loan(
         principal=400000,
@@ -219,7 +220,7 @@ Compare amortization schedules, interest paths, and exit costs across loan types
 | **Loan Lifecycle Modeling**    | Supports mid-life entry with current balance and date overrides                               |
 | **Balloon Payment Support**    | Optional early termination of amortization with balance due at balloon month                  |
 | **Draw + Repayment Phases**    | HELOCs modeled with draw period + fully amortized repayment phase                             |
-| **Payment Frequency Control**  | Monthly and biweekly support, including interest alignment                                    |
+| **Payment Frequency Control**  | Monthly schedule; biweekly extra payments modeled as their monthly equivalent (26/12)         |
 | **CSV and JSON Export**        | Full amortization schedule can be exported for further analysis                               |
 | **Matplotlib Visualizations**  | Built-in plotting for amortization curves, cumulative interest, and scenario comparisons      |
 

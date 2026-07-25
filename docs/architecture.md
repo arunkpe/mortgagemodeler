@@ -39,7 +39,7 @@ MortgageAmortization/
 - **Explicit loan types**: `Loan.from_fha()`, `Loan.from_va()`, `Loan.from_arm_type()` ensure transparent and validated instantiation.
 - **Modular architecture**: CLI, plotting, and amortization logic are cleanly decoupled.
 - **Vectorized performance**: amortization schedules are computed with efficient looped logic; future versions may use NumPy.
-- **CLI-first philosophy**: Everything callable via `python -m cli.cli <command>`
+- **CLI-first philosophy**: Everything callable via `mortgagemodeler <command>`
 
 ---
 

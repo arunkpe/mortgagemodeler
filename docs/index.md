@@ -37,7 +37,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 Generate a fixed-rate amortization schedule:
 
 ```bash
-python -m cli.cli amortize \
+mortgagemodeler amortize \
   --type fixed \
   --balance 400000 \
   --rate 6.0 \
@@ -47,7 +47,7 @@ python -m cli.cli amortize \
 Compare two loan scenarios:
 
 ```bash
-python -m cli.cli plot \
+mortgagemodeler plot \
   --scenarios 400000 6.0 360 \
   --scenarios 400000 5.5 360 
 ```
@@ -78,7 +78,7 @@ PRs and feature suggestions welcome — please open an issue first if you'd like
 black . && flake8
 
 # Run CLI with debug logging
-python -m cli.cli amortize --help
+mortgagemodeler amortize --help
 ```
 
 ---

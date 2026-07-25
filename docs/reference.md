@@ -44,6 +44,6 @@
     options:
       show_signature: true
 
-::: mortgagemodeler.utils.exta_payment_compare.compare_scenarios
+::: mortgagemodeler.utils.extra_payment_compare.compare_scenarios
     options:
       show_signature: true

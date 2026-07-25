@@ -1,3 +1,5 @@
+import math
+
 import click
 from datetime import datetime
 from decimal import Decimal
@@ -11,23 +13,13 @@ from mortgagemodeler.utils import (
     effective_apr,
     plot_amortization_curve,
     compare_scenarios,
-    breakeven_analysis,
     parse_curtailments
 )
 
 load_dotenv()
 
-PRODUCT_MAP = {
-    "3/6": (3, 6),
-    "3/1": (3, 12),
-    "5/1": (5, 12),
-    "5/6": (5, 6),
-    "5/5": (5, 60),
-    "7/6": (7, 6),
-    "7/1": (7, 12),
-    "10/6": (10, 6),
-    "10/1": (10, 12)
-}
+# Commercial ARM products: (fixed_period_years, reset_frequency_months).
+PRODUCT_MAP = Loan.ARM_PRODUCT_MAP
 
 @click.group(help="""
 Mortgage Tools CLI
@@ -36,8 +28,8 @@ Model fixed, ARM, FHA, VA, USDA, and HELOC loans — including amortization, rec
 APR comparison, and breakeven analysis.
 
 Example usage:
-  mortgage amortize --type fixed --balance 400000 --rate 6.0 --term 360
-  mortgage plot --scenarios 400000 6.0 360 --scenarios 400000 5.5 360
+  mortgagemodeler amortize --type fixed --balance 400000 --rate 6.0 --term 360
+  mortgagemodeler plot --scenarios 400000 6.0 360 --scenarios 400000 5.5 360
 """)
 def cli():
     pass
@@ -49,18 +41,18 @@ def cli():
 @click.option('--type', 'loan_type', type=click.Choice(['fixed', 'arm', 'heloc', 'fha', 'va', 'usda']), default='fixed', help="Loan type.")
 @click.option('--index', default=None, help="Index name (e.g. SOFR) for ARM or HELOC.")
 @click.option('--margin', type=float, default=0.0, help="Margin for ARM/HELOC.")
-@click.option('--arm-structure',type=str,default=None,help="ARM structure as 'X/Y' where X is fixed period in years and Y is reset frequency in months. Example: '5/6' for a 5/6 ARM.")
+@click.option('--arm-structure', type=str, default=None, help="ARM product as 'X/Y': X years fixed, then resets per market convention ('5/1' = annual, '5/6' = every 6 months, '5/5' = every 5 years).")
 @click.option('--caps', nargs=3, type=float, default=(2.0, 1.0, 5.0), help="ARM caps: initial, periodic, lifetime.")
-@click.option('--floors', nargs=3, type=float, default=(0.0, 0.0, 0.0), help="ARM floors: initial, periodic, lifetime.")
+@click.option('--floors', nargs=3, type=float, default=(0.0, 0.0, 0.0), help="ARM floors (absolute rates): initial, periodic, lifetime.")
 @click.option('--draw-period', type=int, default=120, help="Draw period for HELOC.")
 @click.option('--repayment-term', type=int, default=240, help="Repayment term for HELOC.")
 @click.option('--start-date', default=None, help="Origination date in YYYY-MM-DD format. Defaults to today.")
 @click.option('--extra-payment', type=float, default=0.0, help="Extra recurring monthly payment.")
-@click.option('--curtailments', type=str, default=None,help="Comma-separated extra payments like '100000@73,50000@85'.")
+@click.option('--curtailments', type=str, default=None, help="Comma-separated extra payments like '100000@73,50000@85'.")
 @click.option('--extra-frequency', type=click.Choice(['monthly', 'biweekly']), default='monthly', help="Frequency of extra payments.")
 @click.option('--recast-date', default=None, help="Date to recast loan (YYYY-MM-DD).")
 @click.option('--recast-month', type=int, default=None, help="Month to recast loan (relative to start, e.g. 43). Overrides --recast-date.")
-@click.option('--lump-sum', type=float, default=0.0, help="Lump sum applied at recast.")
+@click.option('--lump-sum', type=float, default=0.0, help="Lump sum principal payment applied at recast.")
 @click.option('--refinance-date', default=None, help="Date of refinance (YYYY-MM-DD).")
 @click.option('--new-rate', type=float, default=None, help="New interest rate for refinance.")
 @click.option('--new-term', type=int, default=None, help="New loan term in months for refinance.")
@@ -78,10 +70,6 @@ def cli():
 @click.option('--index-curve-file', type=click.Path(exists=True), default=None, help="Optional CSV or JSON with custom date:rate schedule.")
 @click.option('--balloon-month', type=int, default=None, help="Month at which a balloon payment is due. Schedule stops and balance is due.")
 @click.option('--months', type=int, default=None, help="Limit output to first N months")
-
-
-
-
 def amortize(**kwargs):
     start = datetime.strptime(kwargs['start_date'], '%Y-%m-%d').date() if kwargs['start_date'] else datetime.today().date()
     principal = Decimal(str(kwargs['balance']))
@@ -89,16 +77,14 @@ def amortize(**kwargs):
     if kwargs.get('points', 0.0) > 0.0 and kwargs.get('finance_points', False):
         principal += principal * Decimal(str(kwargs['points'])) / Decimal("100")
 
-
     arm_key = kwargs.get('arm_structure')
     if arm_key and arm_key not in PRODUCT_MAP:
-            raise click.BadParameter(f"Unknown ARM structure '{arm_key}'. Allowed values: {', '.join(PRODUCT_MAP.keys())}")
+        raise click.BadParameter(f"Unknown ARM structure '{arm_key}'. Allowed values: {', '.join(sorted(PRODUCT_MAP))}")
 
     caps = kwargs['caps']
     floors = kwargs['floors']
     index_curve = {}
 
-    # Load curve from file or inline JSON (you already do this below, but we need it now)
     if kwargs['index_curve_file']:
         if kwargs['index_curve_file'].endswith('.csv'):
             df = pd.read_csv(kwargs['index_curve_file'])
@@ -119,25 +105,25 @@ def amortize(**kwargs):
     if kwargs['loan_type'] == 'arm':
         if not kwargs['index']:
             raise click.BadParameter("ARM loans require --index to be specified.")
+        if not arm_key:
+            raise click.BadParameter("ARM loans require --arm-structure (e.g. '5/6').")
 
-        if not kwargs.get('caps') or kwargs['caps'] == (2.0, 1.0, 5.0):
+        if kwargs['caps'] == (2.0, 1.0, 5.0):
             click.echo("Using default ARM caps: Initial=2.0%, Periodic=1.0%, Lifetime=5.0%")
         else:
             click.echo(f"ARM caps used: Initial={caps[0]}%, Periodic={caps[1]}%, Lifetime={caps[2]}%")
 
-        if not kwargs.get('floors') or kwargs['floors'] == (0.0, 0.0, 0.0):
+        if kwargs['floors'] == (0.0, 0.0, 0.0):
             click.echo("Using default ARM floors: Initial=0.0%, Periodic=0.0%, Lifetime=0.0%")
         else:
             click.echo(f"ARM floors used: Initial={floors[0]}%, Periodic={floors[1]}%, Lifetime={floors[2]}%")
 
-
-        # Use user-provided rate only if they intend to override
-        user_rate = Decimal(str(kwargs['rate'])) if 'rate' in kwargs and kwargs['rate'] is not None else None
+        user_rate = Decimal(str(kwargs['rate'])) if kwargs['rate'] is not None else None
 
         loan = Loan.from_arm(
             principal=principal,
             term=kwargs['term'],
-            arm_type=kwargs['arm_structure'],
+            arm_type=arm_key,
             index=kwargs['index'],
             margin=kwargs['margin'],
             origination_date=start,
@@ -183,26 +169,45 @@ def amortize(**kwargs):
             extra_payment_frequency=kwargs['extra_frequency']
         )
 
+    curtailments = parse_curtailments(kwargs['curtailments']) if kwargs['curtailments'] else {}
 
     recast_schedule = {}
-
+    recast_month = None
     if kwargs['recast_month'] is not None:
-        recast_schedule[kwargs['recast_month']] = kwargs['term'] - kwargs['recast_month'] + 1
+        recast_month = kwargs['recast_month']
     elif kwargs['recast_date']:
         recast_date = datetime.strptime(kwargs['recast_date'], '%Y-%m-%d').date()
         recast_month = (recast_date.year - start.year) * 12 + (recast_date.month - start.month) + 1
+    if recast_month is not None:
         recast_schedule[recast_month] = kwargs['term'] - recast_month + 1
 
+    # A lump sum at recast is a curtailment applied in the recast month.
+    if kwargs['lump_sum']:
+        if recast_month is None:
+            raise click.BadParameter("--lump-sum requires --recast-month or --recast-date.")
+        curtailments[recast_month] = curtailments.get(recast_month, Decimal("0")) + Decimal(str(kwargs['lump_sum']))
+
     if kwargs['refinance_date'] and kwargs['new_rate'] is not None:
+        refinance_date = datetime.strptime(kwargs['refinance_date'], '%Y-%m-%d').date()
+        refi_month = (refinance_date.year - start.year) * 12 + (refinance_date.month - start.month)
+        balance_at_refi = None
+        if refi_month > 0:
+            # Amortize the original loan up to the refinance date and
+            # refinance the actual outstanding balance.
+            pre_df = LoanAmortizer(loan, curtailments=curtailments).to_dataframe()
+            row = pre_df[pre_df['Month'] == refi_month]
+            if not row.empty:
+                balance_at_refi = row['Ending Balance'].values[0]
+            # Curtailments already applied before the refi don't carry over;
+            # later ones shift onto the new loan's month index.
+            curtailments = {m - refi_month: amt for m, amt in curtailments.items() if m > refi_month}
         loan = loan.refinance(
             new_rate=kwargs['new_rate'],
-            refinance_date=datetime.strptime(kwargs['refinance_date'], '%Y-%m-%d').date(),
+            refinance_date=refinance_date,
             new_term=kwargs['new_term'],
-            fees=kwargs['refi_fees']
+            fees=kwargs['refi_fees'],
+            balance=balance_at_refi
         )
-
-
-    curtailments = parse_curtailments(kwargs['curtailments']) if kwargs['curtailments'] else {}
 
     amortizer = LoanAmortizer(
         loan,
@@ -212,7 +217,7 @@ def amortize(**kwargs):
         starting_date=datetime.strptime(kwargs['starting_date'], '%Y-%m-%d').date() if kwargs['starting_date'] else None,
         balloon_month=kwargs.get('balloon_month'),
         curtailments=curtailments,
-        recast_schedule= recast_schedule
+        recast_schedule=recast_schedule
     )
 
     df = amortizer.to_dataframe()
@@ -237,11 +242,9 @@ def amortize(**kwargs):
     click.echo(display_df.to_markdown(index=False))
 
     if kwargs['points'] > 0.0 or kwargs['refi_fees'] > 0.0 or kwargs['show_apr']:
-        net_proceeds = Decimal(str(kwargs['balance']))
-        if not kwargs['finance_points']:
-            net_proceeds -= Decimal(str(kwargs['balance'])) * Decimal(str(kwargs['points'])) / Decimal("100")
-        net_proceeds -= Decimal(str(kwargs['refi_fees']))
-        apr = effective_apr(net_proceeds, kwargs['rate'], kwargs['term'], kwargs['points'], kwargs['refi_fees'])
+        # effective_apr nets points and fees out of the proceeds itself —
+        # pass the raw balance, not pre-netted proceeds.
+        apr = effective_apr(kwargs['balance'], kwargs['rate'], kwargs['term'], kwargs['points'], kwargs['refi_fees'])
         click.echo(f"Effective APR: {apr:.4f}%")
 
     if kwargs['output']:
@@ -255,7 +258,7 @@ def amortize(**kwargs):
     if kwargs['plot']:
         plot_amortization_curve(df)
         plt.show()
-    
+
 
 @cli.command("compare-apr", help="Compare effective APR accounting for points and fees.")
 @click.option('--principal', type=float, required=True, help="Loan amount.")
@@ -271,8 +274,11 @@ def compare_apr_cmd(principal, rate, term, points, fees):
 @click.option('--monthly-savings', type=float, required=True, help='Monthly savings after refinance.')
 @click.option('--closing-costs', type=float, required=True, help='One-time refinance closing costs.')
 def breakeven_cmd(monthly_savings, closing_costs):
-    month, net_savings, monthly = breakeven_analysis(monthly_savings, closing_costs)
-    click.echo(f"Breakeven reached in: {month} months (Net savings: ${net_savings:.2f})")
+    if monthly_savings <= 0:
+        raise click.BadParameter("--monthly-savings must be positive.")
+    months = math.ceil(closing_costs / monthly_savings)
+    net_after = months * monthly_savings - closing_costs
+    click.echo(f"Breakeven reached in: {months} months (Net savings at that point: ${net_after:,.2f})")
 
 @cli.command("plot", help="Compare amortization curves for multiple loan scenarios.")
 @click.option('--scenarios', type=(float, float, int), multiple=True, required=True,
@@ -283,18 +289,31 @@ def plot_cmd(scenarios):
              origination_date=datetime.today().date()) for (p, r, t) in scenarios
     ]
     dfs = [LoanAmortizer(loan).to_dataframe() for loan in loans]
-    compare_scenarios(*dfs)
+    labels = [f"${p:,.0f} @ {r}% / {t}mo" for (p, r, t) in scenarios]
+
+    summary = compare_scenarios(*dfs, labels=labels)
+    click.echo(summary.to_markdown())
+
+    plt.figure(figsize=(11, 6))
+    for df, label in zip(dfs, labels):
+        plt.plot(df['Month'], df['Ending Balance'], label=label)
+    plt.xlabel("Month")
+    plt.ylabel("Remaining Balance ($)")
+    plt.title("Scenario Comparison — Remaining Balance")
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
     plt.show()
 
-# --- NEW SUBCOMMANDS ---
+# --- ADDITIONAL SUBCOMMANDS ---
 
 @cli.command("payment", help="Show fixed monthly payment given rate, balance, and term.")
 @click.option('--balance', type=float, required=True)
 @click.option('--rate', type=float, required=True)
 @click.option('--term', type=int, required=True)
 def payment_cmd(balance, rate, term):
-    r = Decimal(rate) / Decimal("100") / Decimal("12")
-    pmt = Decimal(balance) * r / (1 - (1 + r) ** -term)
+    r = Decimal(str(rate)) / Decimal("100") / Decimal("12")
+    pmt = Decimal(str(balance)) * r / (1 - (1 + r) ** -term)
     click.echo(f"Monthly Payment: ${pmt.quantize(Decimal('0.01'))}")
 
 @cli.command("recast", help="Recast loan balance with optional new term.")
@@ -302,9 +321,9 @@ def payment_cmd(balance, rate, term):
 @click.option('--rate', type=float, required=True)
 @click.option('--term', type=int, required=False)
 def recast_cmd(balance, rate, term):
-    r = Decimal(rate) / Decimal("100") / Decimal("12")
+    r = Decimal(str(rate)) / Decimal("100") / Decimal("12")
     t = term if term else 360
-    pmt = Decimal(balance) * r / (1 - (1 + r) ** -t)
+    pmt = Decimal(str(balance)) * r / (1 - (1 + r) ** -t)
     click.echo(f"Recast Payment: ${pmt.quantize(Decimal('0.01'))} (Term: {t} months)")
 
 @cli.command("sweep", help="Sweep balance using fixed monthly amount to determine payoff term.")
@@ -312,13 +331,14 @@ def recast_cmd(balance, rate, term):
 @click.option('--rate', type=float, required=True)
 @click.option('--monthly', type=float, required=True)
 def sweep_cmd(balance, rate, monthly):
-    r = Decimal(rate) / Decimal("100") / Decimal("12")
-    p = Decimal(monthly)
-    if p <= Decimal(balance) * r:
+    r = Decimal(str(rate)) / Decimal("100") / Decimal("12")
+    p = Decimal(str(monthly))
+    if p <= Decimal(str(balance)) * r:
         click.echo("Payment too low to cover interest. Balance will never be paid off.")
         return
-    n = -(Decimal("1") / r) * (1 - (Decimal(balance) * r / p)).ln() / (1 + r).ln()
-    click.echo(f"Balance paid off in: {int(n)} months")
+    # Standard NPER: n = -ln(1 - B*r/P) / ln(1 + r)
+    n = -(1 - (Decimal(str(balance)) * r / p)).ln() / (1 + r).ln()
+    click.echo(f"Balance paid off in: {math.ceil(n)} months")
 
 if __name__ == '__main__':
     cli()

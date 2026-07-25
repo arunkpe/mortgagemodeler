@@ -14,7 +14,7 @@ This example shows the amortization for a $300,000 FHA loan over 30 years with a
 ## CLI Command
 
 ```bash
-python -m cli.cli amortize \
+mortgagemodeler amortize \
   --type fha \
   --balance 300000 \
   --rate 6.25 \

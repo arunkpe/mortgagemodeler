@@ -1,9 +1,17 @@
 [project]
 name = "mortgagemodeler"
-version = "0.4.1" 
+version = "0.5.0"
 description = "Flexible mortgage amortization and analytics tools in Python"
 authors = [
     { name = "Arun Kumar" }
+]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License"
 ]
 dependencies = [
     "click>=8.0",
@@ -12,28 +20,23 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "numpy_financial",
-    "python-dotenv"
+    "python-dotenv",
+    "python-dateutil>=2.8",
+    "tabulate>=0.9",
 ]
 readme = "READMEPyPi.md"
 
-[project.license]
-text = "MIT"
-
-classifiers = [
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "License :: OSI Approved :: MIT License"
-]
-
 [project.scripts]
-mortgagemodeler = "cli.cli:cli"
+mortgagemodeler = "mortgagemodeler.cli:cli"
 
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["mortgagemodeler", "mortgagemodeler.utils", "cli"]
+packages = ["mortgagemodeler", "mortgagemodeler.utils"]
 include-package-data = false
 
+[tool.setuptools.package-data]
+mortgagemodeler = ["data/*.txt"]
+"mortgagemodeler.utils" = ["data/*.csv"]
