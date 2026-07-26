@@ -1,7 +1,7 @@
 # MortgageModeler
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/arunkpe/mortgagemodeler/actions)
+[![CI](https://github.com/arunkpe/mortgagemodeler/actions/workflows/ci.yml/badge.svg)](https://github.com/arunkpe/mortgagemodeler/actions/workflows/ci.yml)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/arunkpe/mortgagemodeler/HEAD)
